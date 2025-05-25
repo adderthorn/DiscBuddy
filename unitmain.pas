@@ -7,13 +7,15 @@ interface
 uses
   Classes, SysUtils, Forms, Controls, Graphics, Dialogs, StdCtrls, ActnList,
   Menus, Grids, StdActns, ExtCtrls, ComCtrls, EditBtn, fpjson, jsonparser,
-  DiscInfoUnit, unitutilities;
+  DiscInfoUnit, unitutilities, RecordsUnit;
 
 type
 
   { TFormMain }
 
   TFormMain = class(TForm)
+    ButtonRefresh: TButton;
+    ButtonRename: TButton;
     DirectoryEditVideos: TDirectoryEdit;
     FileNameEditJson: TFileNameEdit;
     FileOpenPath: TAction;
@@ -24,6 +26,7 @@ type
     ImageListMain: TImageList;
     EditInputMask: TLabeledEdit;
     LabeledEdit1: TLabeledEdit;
+    EditNewFileName: TLabeledEdit;
     LabelVideoPath: TLabel;
     LabelJsonFile: TLabel;
     MainMenu: TMainMenu;
@@ -41,11 +44,16 @@ type
     TabSheetOpts: TTabSheet;
     TabSheetMain: TTabSheet;
     procedure ActionViewAllTitlesExecute(Sender: TObject);
+    procedure ButtonRefreshClick(Sender: TObject);
+    procedure ButtonRenameClick(Sender: TObject);
+    procedure DirectoryEditVideosAcceptDirectory(Sender: TObject;
+      var Value: String);
     procedure FileNameEditJsonAcceptFileName(Sender: TObject; var Value: String
       );
     procedure FileOpenAccept(Sender: TObject);
     procedure FileOpenPathExecute(Sender: TObject);
     procedure FormClose(Sender: TObject; var CloseAction: TCloseAction);
+    procedure FormCreate(Sender: TObject);
     procedure ParseJson(AllTitles: boolean);
     procedure ParseVideoPath(InputMask: string);
     procedure TabControlGridsChange(Sender: TObject);
@@ -53,10 +61,14 @@ type
     FDiscInfo: TDiscInfo;
     FDiscFile: string;
     FVideoFolder: string;
+    FVideoRecords: TVideoRecords;
     procedure ResetGrid(Headers: array of string);
     procedure AddDirToGrid(Index: integer; Rec: TSearchRec);
+    procedure RefreshVideoGrid;
     function BuildRowArray(ATitle: TTitlesItem): TStringList;
+    function GetUpdatedFileName(OriginalName: string; Title: TTitlesItem): string;
   public
+    property VideoRecords: TVideoRecords read FVideoRecords write FVideoRecords;
     property DiscInfo: TDiscInfo read FDiscInfo write FDiscInfo;
     property DiscFile: string read FDiscFile write FDiscFile;
     property VideoFolder: string read FVideoFolder write FVideoFolder;
@@ -96,6 +108,8 @@ var
   r: integer;
   RowArray: TStringList;
 begin
+  StringGrid1.BeginUpdate;
+  ResetGrid(kJsonHeaders);
   if DiscFile <> '' then
   begin
     if DiscInfo = nil then
@@ -103,9 +117,9 @@ begin
       JsonFileStream:=TFileStream.Create(DiscFile, fmOpenRead or fmShareDenyWrite);
       AData:=GetJSON(JsonFileStream);
       DiscInfo:=TDiscInfo.CreateFromJSON(AData);
+      FreeAndNil(AData);
+      FreeAndNil(JsonFileStream);
     end;
-    StringGrid1.BeginUpdate;
-    ResetGrid(kJsonHeaders);
     r:=1;
     for ATitle in DiscInfo.Titles do
     begin
@@ -117,38 +131,35 @@ begin
         FreeAndNil(RowArray);
       end;
     end;
-    StringGrid1.AutoSizeColumns;
-    StringGrid1.EndUpdate;
-    //FreeAndNil(AData);
-    FreeAndNil(JsonFileStream);
   end;
+  StringGrid1.AutoSizeColumns;
+  StringGrid1.EndUpdate;
 end;
 
 procedure TFormMain.ParseVideoPath(InputMask: string);
 var
   Info: TSearchRec;
   DirName: string;
+  Rec: TVideoRecord;
   Index: integer;
 begin
   if VideoFolder <> '' then
   begin
-    StringGrid1.BeginUpdate;
-    ResetGrid(kVideoHeaders);
-    Index:=1;
     DirName:=IncludeTrailingPathDelimiter(VideoFolder);
     if FindFirst(DirName + InputMask, faArchive, Info) = 0 then
-      try
-        Repeat
-        begin
-            AddDirToGrid(Index, Info);
-            Inc(Index);
-          end;
-        until FindNext(Info) <> 0;
-      finally
-        FindClose(Info);
+    try
+      Index:=0;
+      VideoRecords:=TVideoRecords.Create;
+      repeat
+      begin
+        Rec:=TVideoRecord.Create(Info.Name, DirName, Index);
+        VideoRecords.Add(Rec);
+        Inc(Index);
       end;
-    StringGrid1.AutoSizeColumns;
-    StringGrid1.EndUpdate;
+      until FindNext(Info) <> 0;
+    finally
+      FindClose(Info);
+    end;
   end;
 end;
 
@@ -156,7 +167,7 @@ procedure TFormMain.TabControlGridsChange(Sender: TObject);
 begin
   case TabControlGrids.TabIndex of
     0: ParseJson(ActionViewAllTitles.Checked);
-    1: ParseVideoPath('*.*');
+    1: ParseVideoPath(EditInputMask.Text);
   end;
 end;
 
@@ -165,16 +176,47 @@ begin
   ParseJson(ActionViewAllTitles.Checked);
 end;
 
+procedure TFormMain.ButtonRefreshClick(Sender: TObject);
+begin
+  ParseVideoPath(EditInputMask.Text);
+end;
+
+procedure TFormMain.ButtonRenameClick(Sender: TObject);
+var
+  ATitle: TTitlesItem;
+  NewFileName: string;
+  i: integer;
+  Rec: TVideoRecord;
+begin
+  for i:=0 to VideoRecords.Count do
+  begin
+    Rec:=VideoRecords[i];
+    ATitle:=DiscInfo.GetTitleItem(Rec.Index);
+    NewFileName:=GetUpdatedFileName(EditNewFileName.Text, ATitle);
+    Rec.RenameRecord(NewFileName);
+  end;
+end;
+
+procedure TFormMain.DirectoryEditVideosAcceptDirectory(Sender: TObject;
+  var Value: String);
+begin
+  VideoFolder:=Value;
+  ParseVideoPath(EditInputMask.Text);
+end;
+
 procedure TFormMain.FileNameEditJsonAcceptFileName(Sender: TObject;
   var Value: String);
 begin
   DiscFile:=Value;
+  DiscInfo:=nil;
+  ParseJson(ActionViewAllTitles.Checked);
 end;
 
 procedure TFormMain.FileOpenAccept(Sender: TObject);
 begin
   DiscFile:=FileOpen.Dialog.FileName;
   FileNameEditJson.FileName:=DiscFile;
+  DiscInfo:=nil;
   ParseJson(ActionViewAllTitles.Checked);
 end;
 
@@ -192,6 +234,13 @@ end;
 procedure TFormMain.FormClose(Sender: TObject; var CloseAction: TCloseAction);
 begin
   FreeAndNil(FDiscInfo);
+  FreeAndNil(FVideoRecords);
+end;
+
+procedure TFormMain.FormCreate(Sender: TObject);
+begin
+  ResetGrid(kJsonHeaders);
+  StringGrid1.AutoSizeColumns;
 end;
 
 procedure TFormMain.ResetGrid(Headers: array of string);
@@ -222,7 +271,7 @@ begin
       ReplacedText:=ReplacedText.Replace('{SOURCE}', ATitle.SourceFile.Substring(0, Length(ATitle.SourceFile) - ATitle.SourceFile.IndexOf('.')));
       if (OriginalFileName = ReplacedText) and (ATitle.Item <> nil) then
       begin
-        NewFileName:=ATitle.Item.Title;
+        NewFileName:=GetUpdatedFileName(EditNewFileName.Text, ATitle);
       end;
     end;
   end;
@@ -234,6 +283,11 @@ begin
     FormatSize(Rec.Size),
     DateTimeToStr(Rec.TimeStamp)
   ]);
+end;
+
+procedure TFormMain.RefreshVideoGrid;
+begin
+
 end;
 
 function TFormMain.BuildRowArray(ATitle: TTitlesItem): TStringList;
@@ -255,6 +309,18 @@ begin
   AList.Add(ATitle.Duration);
   AList.Add(ATitle.DisplaySize);
   Result:=AList;
+end;
+
+function TFormMain.GetUpdatedFileName(OriginalName: string; Title: TTitlesItem): string;
+var
+  Replaced: string;
+begin
+  Replaced:=OriginalName;
+  Replaced:=Replaced.Replace('{E}', Title.Item.Episode.PadLeft(2, '0'));
+  Replaced:=Replaced.Replace('{S}', Title.Item.Season.PadLeft(2, '0'));
+  Replaced:=Replaced.Replace('{DESC}', Title.Item.Title);
+  Replaced:=Replaced.Replace('{SM}', Title.SegmentMap);
+  Result:=Replaced;
 end;
 
 end.
