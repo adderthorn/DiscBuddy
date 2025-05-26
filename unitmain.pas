@@ -27,6 +27,7 @@ type
     EditInputMask: TLabeledEdit;
     LabeledEdit1: TLabeledEdit;
     EditNewFileName: TLabeledEdit;
+    EditReplaceChar: TLabeledEdit;
     LabelVideoPath: TLabel;
     LabelJsonFile: TLabel;
     MainMenu: TMainMenu;
@@ -63,7 +64,7 @@ type
     FVideoFolder: string;
     FVideoRecords: TVideoRecords;
     procedure ResetGrid(Headers: array of string);
-    procedure AddDirToGrid(Index: integer; Rec: TSearchRec);
+    procedure AddDirToGrid(Index: integer; Rec: TVideoRecord);
     procedure RefreshVideoGrid;
     function BuildRowArray(ATitle: TTitlesItem): TStringList;
     function GetUpdatedFileName(OriginalName: string; Title: TTitlesItem): string;
@@ -75,7 +76,7 @@ type
   end;
 
 const
-  kJsonHeaders : array [0..7] of string = (
+  kJsonHeaders: array [0..7] of string = (
     'Source File',
     'Description',
     'Type',
@@ -84,12 +85,14 @@ const
     'Segment Map',
     'Duration',
     'Size');
-  kVideoHeaders : array [0..4] of string = (
+  kVideoHeaders: array [0..5] of string = (
     'Original File Name',
     'New File Name',
     'Attribute',
     'Size',
-    'Modification Date');
+    'Modification Date',
+    'Renamed?');
+  kInvalidChars: set of char = ['\', '/', ':', '*', '?', '"', '<', '>', '|'];
 
 var
   FormMain: TFormMain;
@@ -149,10 +152,14 @@ begin
     if FindFirst(DirName + InputMask, faArchive, Info) = 0 then
     try
       Index:=0;
+      FreeAndNil(FVideoRecords);
       VideoRecords:=TVideoRecords.Create;
       repeat
       begin
         Rec:=TVideoRecord.Create(Info.Name, DirName, Index);
+        Rec.Attr:=Info.Attr;
+        Rec.Size:=Info.Size;
+        Rec.Time:=Info.TimeStamp;
         VideoRecords.Add(Rec);
         Inc(Index);
       end;
@@ -160,6 +167,7 @@ begin
     finally
       FindClose(Info);
     end;
+    RefreshVideoGrid;
   end;
 end;
 
@@ -167,7 +175,7 @@ procedure TFormMain.TabControlGridsChange(Sender: TObject);
 begin
   case TabControlGrids.TabIndex of
     0: ParseJson(ActionViewAllTitles.Checked);
-    1: ParseVideoPath(EditInputMask.Text);
+    1: RefreshVideoGrid;
   end;
 end;
 
@@ -188,12 +196,15 @@ var
   i: integer;
   Rec: TVideoRecord;
 begin
-  for i:=0 to VideoRecords.Count do
+  for i:=0 to VideoRecords.Count - 1do
   begin
     Rec:=VideoRecords[i];
     ATitle:=DiscInfo.GetTitleItem(Rec.Index);
     NewFileName:=GetUpdatedFileName(EditNewFileName.Text, ATitle);
-    Rec.RenameRecord(NewFileName);
+    if Rec.RenameRecord(NewFileName) then
+      StringGrid1.Cells[5, i + 1]:='Yes'
+    else
+      StringGrid1.Cells[5, i + 1]:='No';
   end;
 end;
 
@@ -253,13 +264,13 @@ begin
   StringGrid1.EndUpdate(false);
 end;
 
-procedure TFormMain.AddDirToGrid(Index: integer; Rec: TSearchRec);
+procedure TFormMain.AddDirToGrid(Index: integer; Rec: TVideoRecord);
 var
   OriginalFileName, NewFileName, ReplacedText: string;
   i: integer;
   ATitle: TTitlesItem;
 begin
-  OriginalFileName:=Rec.Name;
+  OriginalFileName:=Rec.FileName;
 
   NewFileName:='';
   if DiscInfo <> nil then
@@ -272,6 +283,7 @@ begin
       if (OriginalFileName = ReplacedText) and (ATitle.Item <> nil) then
       begin
         NewFileName:=GetUpdatedFileName(EditNewFileName.Text, ATitle);
+        Rec.Index:=i;
       end;
     end;
   end;
@@ -281,13 +293,21 @@ begin
     NewFileName,
     Rec.Attr.ToString,
     FormatSize(Rec.Size),
-    DateTimeToStr(Rec.TimeStamp)
+    DateTimeToStr(Rec.Time)
   ]);
 end;
 
 procedure TFormMain.RefreshVideoGrid;
+var
+  i: integer;
 begin
-
+  TabControlGrids.TabIndex:=1;
+  StringGrid1.BeginUpdate;
+  ResetGrid(kVideoHeaders);
+  for i:=0 to VideoRecords.Count - 1 do
+    AddDirToGrid(i + 1, VideoRecords[i]);
+  StringGrid1.AutoSizeColumns;
+  StringGrid1.EndUpdate;
 end;
 
 function TFormMain.BuildRowArray(ATitle: TTitlesItem): TStringList;
@@ -314,13 +334,23 @@ end;
 function TFormMain.GetUpdatedFileName(OriginalName: string; Title: TTitlesItem): string;
 var
   Replaced: string;
+  i: integer;
 begin
   Replaced:=OriginalName;
   Replaced:=Replaced.Replace('{E}', Title.Item.Episode.PadLeft(2, '0'));
   Replaced:=Replaced.Replace('{S}', Title.Item.Season.PadLeft(2, '0'));
   Replaced:=Replaced.Replace('{DESC}', Title.Item.Title);
   Replaced:=Replaced.Replace('{SM}', Title.SegmentMap);
-  Result:=Replaced;
+
+  Result:='';
+  for i:=1 to Length(Replaced) do
+  begin
+    if not (Replaced[i] in kInvalidChars) then
+      Result:=Result + Replaced[i]
+    else
+      Result:=Result + EditReplaceChar.Text;
+  end;
+  Result:=Result.Trim;
 end;
 
 end.

@@ -1,7 +1,7 @@
 object FormMain: TFormMain
-  Left = 1718
+  Left = 1019
   Height = 786
-  Top = 622
+  Top = 668
   Width = 929
   Caption = 'Disc Buddy'
   ClientHeight = 786
@@ -85,9 +85,9 @@ object FormMain: TFormMain
           Left = 340
           Height = 28
           Top = 90
-          Width = 100
+          Width = 104
           EditLabel.Height = 20
-          EditLabel.Width = 100
+          EditLabel.Width = 104
           EditLabel.Caption = 'Input Mask'
           TabOrder = 2
           Text = '*.mkv'
@@ -112,7 +112,7 @@ object FormMain: TFormMain
           EditLabel.Width = 210
           EditLabel.Caption = 'New File Name'
           TabOrder = 4
-          Text = '{S}{E}_{DESC}.mkv'
+          Text = 'S{S}E{E}_{DESC}.mkv'
         end
         object ButtonRefresh: TButton
           Left = 688
@@ -132,6 +132,18 @@ object FormMain: TFormMain
           TabOrder = 6
           OnClick = ButtonRenameClick
         end
+        object EditReplaceChar: TLabeledEdit
+          Left = 344
+          Height = 28
+          Top = 30
+          Width = 100
+          EditLabel.Height = 20
+          EditLabel.Width = 100
+          EditLabel.Caption = 'Invalid Char'
+          MaxLength = 1
+          TabOrder = 7
+          Text = '_'
+        end
       end
       object TabSheetOpts: TTabSheet
         Caption = 'Options'
@@ -144,7 +156,7 @@ object FormMain: TFormMain
     Top = 165
     Width = 929
     OnChange = TabControlGridsChange
-    TabIndex = 1
+    TabIndex = 0
     Tabs.Strings = (
       'JSON &Input File'
       'Video File &Output'

@@ -11,14 +11,19 @@ type
 
   TVideoRecord = class(TObject)
   private
-    FFileName: string;
-    FFilePath: string;
+    FFileName, FFilePath: string;
     FIndex: integer;
+    FAttr: longint;
+    FSize: int64;
+    FTime: TDateTime;
   public
     constructor Create(FileName, FilePath: string; Index: integer); virtual;
-    procedure RenameRecord(NewName: string);
+    function RenameRecord(NewName: string): boolean;
     property FileName: string read FFileName write FFileName;
     property FilePath: string read FFilePath write FFilePath;
+    property Attr: longint read FAttr write FAttr;
+    property Time: TDateTime read FTime write FTime;
+    property Size: int64 read FSize write FSize;
     property Index: integer read FIndex write FIndex;
   end;
 
@@ -36,6 +41,9 @@ type
     property Items[Index: integer]: TVideoRecord read Get; default;
   end;
 
+const
+  kInvalidChars: set of char = ['\', '/', ':', '*', '?', '"', '<', '>', '|'];
+
 implementation
 
 constructor TVideoRecord.Create(FileName, FilePath: string; Index: integer);
@@ -45,13 +53,13 @@ begin
   Self.Index:=Index;
 end;
 
-procedure TVideoRecord.RenameRecord(NewName: string);
+function TVideoRecord.RenameRecord(NewName: string): boolean;
 var
   FullPath, NewFullName: string;
 begin
   FullPath:=ConcatPaths([FilePath, FileName]);
   NewFullName:=ConcatPaths([FilePath, NewName]);
-  RenameFile(FullPath, NewFullName);
+  Result:=RenameFile(FullPath, NewFullName);
 end;
 
 function TVideoRecords.Get(Index: integer): TVideoRecord;
