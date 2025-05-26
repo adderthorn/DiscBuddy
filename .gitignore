@@ -31,3 +31,6 @@ bin/
 *.app/
 bin
 .DS_Store
+GTAGS
+GPATH
+GRTAGS
